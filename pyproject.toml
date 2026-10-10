@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "onedrive-fixer"
+version = "0.1.0"
+description = "Fix OneDrive Apple media filenames and convert HEIC photos to JPEG."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.14"
+dependencies = [
+    "av>=19,<20",
+    "Pillow>=12,<13",
+    "pillow-heif>=1.0,<2",
+    "Send2Trash>=2,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9,<10", "ruff>=0.14,<1", "build>=1.3,<2"]
+
+[project.scripts]
+onedrive-fixer = "onedrive_fixer.ui.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/onedrive_fixer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["legacy: optional read-only checks against the original TypeScript media fixtures"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+extend-exclude = [".tools", ".venv", "build", "dist"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "UP", "B", "SIM",
+    "D100", "D101", "D102", "D103", "D104", "D107", "D207", "D208", "D209", "D213",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
