@@ -60,12 +60,37 @@ Exit codes: `0` success (including a clean preview or declined confirmation), `1
 
 ## Development
 
+Install local style hooks once per checkout:
+
+```powershell
+python -m pip install pre-commit
+pre-commit install
+```
+
+With uv, use `uv tool install pre-commit` instead of the pip command.
+
+Hooks apply Ruff lint fixes and formatting using `pyproject.toml`, and check whitespace,
+YAML, JSON, TOML, and file sizes. To run the same checks manually:
+
+```powershell
+pre-commit run --all-files --show-diff-on-failure
+```
+
 ```powershell
 python -m pytest
 python -m ruff check .
 python -m ruff format --check .
 python -m build
 ```
+
+GitHub Actions runs `build` on Windows, Linux, and macOS with Python 3.14 and locked
+dependencies, tests the installed package, builds a wheel and source distribution,
+and checks the CLI entry point. The separate `maintenance` workflow runs the same
+pre-commit hooks and commits passing fixes as `chore: maintenance` on same-repository
+branches. Fork pull requests receive checks without automatic commits. Both workflows
+run on branch pushes, pull requests to `main`, and manual dispatches. Automatic fixes
+require repository Actions permissions to allow writing contents and branch rules
+that permit the bot to push.
 
 See [the design document](docs/design.md) for behavior, architecture, safety decisions, and GUI integration, and [development notes](docs/development.md) for the project layout and optional legacy-media checks.
 

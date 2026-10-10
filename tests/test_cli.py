@@ -72,6 +72,9 @@ def test_invalid_folder_is_operational_failure(tmp_path, capsys):
 
 
 def test_interactive_menu_preview_cancel_and_history(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(
+        "onedrive_fixer.adapters.history.tempfile.gettempdir", lambda: str(tmp_path)
+    )
     photos = tmp_path / "photos"
     photos.mkdir()
     (photos / "photo.heic").touch()

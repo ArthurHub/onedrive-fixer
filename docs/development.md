@@ -16,7 +16,21 @@ python -m build
 onedrive-fixer --help
 ```
 
-Use `python -m ruff check --fix .` and `python -m ruff format .` to apply style changes. No pre-commit hook is configured in this project.
+Install `pre-commit` with `python -m pip install pre-commit`, then run `pre-commit install`
+once per checkout. Normal Git commits, including commits from VS Code, then run the
+hooks in `.pre-commit-config.yaml`. After editing code, run
+`pre-commit run --files <changed files>` to apply Ruff lint fixes and formatting and
+check file hygiene. Use `pre-commit run --all-files --show-diff-on-failure` for a full
+check. Ruff hooks use the existing `pyproject.toml` rules; keep their pinned revision
+aligned with the Ruff version in `uv.lock` when upgrading tools.
+
+GitHub Actions uses one `maintenance` workflow to apply and verify these hooks before
+committing passing fixes on writable same-repository branches. Fork pull requests only
+run checks. The separate `build` workflow installs locked dependencies with
+`uv sync --locked --extra dev --no-editable`, runs pytest against the installed package,
+builds both distribution formats with `uv build`, and checks `onedrive-fixer --help` on
+Windows, Linux, and macOS with Python 3.14. Optional legacy-media tests remain skipped
+unless their fixture environment variable is set.
 
 ### Documentation style
 

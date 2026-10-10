@@ -1,0 +1,51 @@
+name: maintenance
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: maintenance-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.head_ref || github.ref }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.0"
+          python-version: "3.14"
+
+      - name: Apply style fixes
+        if: >-
+          (github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/')) ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
+        run: uvx --from pre-commit==4.6.0 pre-commit run --all-files --show-diff-on-failure
+
+      - name: Verify style
+        run: uvx --from pre-commit==4.6.0 pre-commit run --all-files --show-diff-on-failure
+
+      - name: Commit maintenance fixes
+        if: >-
+          (github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/')) ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore: maintenance"
