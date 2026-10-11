@@ -25,6 +25,9 @@ dev = ["pytest>=9,<10", "ruff>=0.14,<1", "build>=1.3,<2"]
 [project.scripts]
 onedrive-fixer = "onedrive_fixer.ui.cli:main"
 
+[dependency-groups]
+executable = ["pyinstaller>=6.22.3,<7"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/onedrive_fixer"]
 

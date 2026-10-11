@@ -21,6 +21,31 @@ uv sync --extra dev
 uv run onedrive-fixer
 ```
 
+## Standalone Windows executable
+
+Build a single executable on Windows with Python 3.14 and uv:
+
+```powershell
+# Use a separate environment so a running development CLI does not lock the build.
+$env:UV_PROJECT_ENVIRONMENT = "$PWD\.tools\executable-env"
+uv run --locked --group executable --no-editable python scripts/build_executable.py
+```
+
+The output is `dist\onedrive-fixer.exe`. Copy that file to another Windows x64
+computer; Python, ExifTool, and FFmpeg do not need to be installed. Double-click it
+to open the interactive menu, or run commands from PowerShell:
+
+```powershell
+.\dist\onedrive-fixer.exe
+.\dist\onedrive-fixer.exe fix-names 'C:\Photos' --json
+```
+
+The console executable includes Python and the native media libraries. It extracts
+support files into a temporary directory when launched, so startup takes longer
+than running from an installed Python environment. The packaging dependency group
+is separate from normal application dependencies. See [development notes](docs/development.md#executable-checks)
+for the standalone verification command.
+
 ## Interactive menu
 
 Run `onedrive-fixer` without arguments to select options with the arrow keys and Enter.

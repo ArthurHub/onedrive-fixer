@@ -32,6 +32,33 @@ builds both distribution formats with `uv build`, and checks `onedrive-fixer --h
 Windows, Linux, and macOS with Python 3.14. Optional legacy-media tests remain skipped
 unless their fixture environment variable is set.
 
+### Executable checks
+
+The `executable` dependency group locks PyInstaller and its packaging hooks. On
+Windows, build `dist/onedrive-fixer.exe` using the [README instructions](../README.md#standalone-windows-executable).
+Build with 64-bit Python for a Windows x64 executable. The build script uses the
+existing module entry point, retains the terminal for interactive prompts, and
+puts generated specifications and intermediate files in ignored `build/`.
+PyInstaller's hooks collect Pillow plugins and PyAV's bundled FFmpeg libraries;
+native HEIF dependencies are collected through binary dependency analysis.
+
+After building, run the optional integration checks:
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = "$PWD\.tools\executable-env"
+$env:ONEDRIVE_FIXER_EXE = "$PWD\dist\onedrive-fixer.exe"
+uv run --locked --extra dev --group executable --no-editable python -m pytest tests/test_executable.py
+Remove-Item Env:ONEDRIVE_FIXER_EXE
+```
+
+These checks copy only the executable to a temporary folder, run it outside the
+checkout with Python removed from `PATH`, and verify CLI help, error exit codes,
+photo/video metadata, HEIC conversion, and JPEG optimization. Generated media is
+used throughout; conversion retains originals and optimization retains backups.
+Interactive terminal behavior and actual Recycle Bin calls remain manual checks.
+The tests skip unless `ONEDRIVE_FIXER_EXE` is set. Rebuild and rerun them whenever
+application code, packaging tools, or media dependencies change.
+
 ### Documentation style
 
 Document source modules, types, functions, and methods with concise Python docstrings. Place the opening and closing triple quotes on their own lines, including for a single sentence. Describe behavior and contracts, especially defaults, side effects, returned statuses, and error handling; aim for two or three content lines unless the behavior needs more explanation. Keep field-specific notes and implementation comments short.

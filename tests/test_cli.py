@@ -184,7 +184,8 @@ def test_preview_again_requires_apply_selection_before_conversion(
 
 
 @pytest.mark.parametrize("status", list(Status))
-def test_review_prints_only_requested_category(tmp_path, monkeypatch, capsys, status):
+@pytest.mark.parametrize("columns", [80, 200])
+def test_review_prints_only_requested_category(tmp_path, monkeypatch, capsys, status, columns):
     from onedrive_fixer.ui.cli import _review
 
     results = [
@@ -196,11 +197,12 @@ def test_review_prints_only_requested_category(tmp_path, monkeypatch, capsys, st
 
     def choose(message, choices, *, default):
         nonlocal prompts
-        output = capsys.readouterr().out
+        # Rich may fold a filename across rows depending on the path and terminal width.
+        output = "".join(capsys.readouterr().out.split())
         assert default == "cancel"
         assert {item.value for item in choices} == {item.value for item in Status} | {"cancel"}
         if prompts == 0:
-            assert "7 media files" in output
+            assert "7mediafiles" in output
             assert not any(result.plan.source.name in output for result in results)
             prompts += 1
             return status.value
@@ -210,12 +212,15 @@ def test_review_prints_only_requested_category(tmp_path, monkeypatch, capsys, st
         )
         return "cancel"
 
-    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("COLUMNS", str(columns))
     monkeypatch.setattr("onedrive_fixer.ui.cli.select", choose)
     assert _review(results) == "cancel"
 
 
-def test_menu_allows_category_review_when_no_changes_are_ready(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("columns", [80, 200])
+def test_menu_allows_category_review_when_no_changes_are_ready(
+    tmp_path, monkeypatch, capsys, columns
+):
     history = RecentFolders(tmp_path / "history.json")
     history.remember(tmp_path)
     source = tmp_path / "unchanged.jpg"
@@ -231,10 +236,10 @@ def test_menu_allows_category_review_when_no_changes_are_ready(tmp_path, monkeyp
         assert "preview" not in [choice.value for choice in choices]
         return next(answers)
 
-    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setenv("COLUMNS", str(columns))
     monkeypatch.setattr("onedrive_fixer.ui.cli.select", choose)
     assert main([]) == 0
-    assert "unchanged.jpg" in capsys.readouterr().out
+    assert "unchanged.jpg" in "".join(capsys.readouterr().out.split())
     assert not source.exists()
 
 
