@@ -65,7 +65,7 @@ Activate `.venv` or use the full executable path from the setup example. `python
 - Name fixing scans `.heic`, `.jpg`, `.jpeg`, `.png`, `.mp4`, and `.mov`, ignoring extension case. It changes only files whose metadata `Make` is Apple and whose names start with `YYYYMMDD_HHMMSS`.
 - Capture-local timestamps replace the filename prefix. Suffixes and extension case are retained; attached milliseconds receive a separator: `20241101_164622039_iOS.heic` becomes `20241101_094622_039_iOS.heic`.
 - Photo metadata comes from EXIF `Make` and `DateTimeDigitized`. Video metadata comes from the MOV/MP4 container's creation time and camera make, with Apple's explicit capture offset applied when available. Files without a usable creation date are skipped.
-- HEIC conversion writes `.jpeg` beside each source. Quality defaults to 100, matching the original implementation; set `--quality 1-100` to change it.
+- HEIC conversion writes `.jpeg` beside each source with quality 90, 4:2:0 color subsampling, and optimized encoding to reduce file size. Set `--quality 1-100` to change the quality. Conversion retains supported EXIF, color profiles, and XMP metadata. JPEG is lossy even at quality 100; use `--keep-original` to retain the original HEIC quality and features.
 - Existing destinations and duplicate planned destinations are reported as conflicts. Files changed since scanning are rejected. Links and junctions inside the scanned tree are skipped.
 - Each JPEG is staged and decoded successfully before publication and source recycling. Failed conversion preserves the original. A recycling failure preserves both files and reports their state.
 - Dry runs only scan and validate plans. They do not test HEIC decoding or Recycle Bin availability.

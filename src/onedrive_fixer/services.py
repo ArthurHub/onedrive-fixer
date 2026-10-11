@@ -246,11 +246,11 @@ def convert_heic(
     *,
     dry_run: bool = True,
     keep_original: bool = False,
-    quality: int = 100,
+    quality: int = 90,
     progress: ProgressCallback | None = None,
 ) -> list[FileResult]:
     """
-    Preview or convert READY HEIC plans with JPEG quality from 1 to 100.
+    Preview or convert READY HEIC plans with JPEG quality from 1 to 100 (default 90).
     Dry runs perform no encoding or recycling. Apply stages and verifies each JPEG
     before publication, then recycles the source unless keep_original is set.
     Conversion failures preserve the source; recycling failures retain both files.

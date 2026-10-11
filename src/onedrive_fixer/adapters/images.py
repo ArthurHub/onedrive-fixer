@@ -40,7 +40,14 @@ class PillowHeicConverter:
                         options["icc_profile"] = icc
                     if xmp := oriented.info.get("xmp"):
                         options["xmp"] = xmp
-                    rgb.save(destination, format="JPEG", quality=quality, subsampling=0, **options)
+                    rgb.save(
+                        destination,
+                        format="JPEG",
+                        quality=quality,
+                        subsampling=2,
+                        optimize=True,
+                        **options,
+                    )
                     expected_size = rgb.size
             finally:
                 oriented.close()

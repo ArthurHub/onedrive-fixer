@@ -20,12 +20,12 @@ The original code has a menu with name fixing, HEIC conversion, and exit. It rec
 | Missing metadata or filename date | Report a skipped/unknown-date result |
 | Already-correct filename | Report unchanged |
 | Conversion scan | Recursively find `.heic`, case insensitive |
-| JPEG output | Same folder/stem, `.jpeg` extension, default quality 100 |
+| JPEG output | Same folder/stem, `.jpeg` extension, default quality 90, optimized 4:2:0 encoding |
 | Original after conversion | Recycle after verified JPEG publication; `--keep-original` is also available |
 | Recent folders | Five most recent unique paths; tolerate malformed cache and read the old cache if needed |
 | User interaction | Arrow-key menus, folder completion, category counts with optional file lists, progress, confirmation; also scriptable subcommands |
 
-The original converter's comment says quality 0.92, but its executed code uses 1.0; the port follows the code. It also writes and then trashes the generated JPEG during dry runs. The port deliberately makes dry runs read-only. Consequently, dry runs do not validate decoding. An apply operation validates decoding before it can recycle a source.
+The original converter's comment says quality 0.92, but its executed code uses 1.0. The Python converter defaults to quality 90 with optimized 4:2:0 encoding to avoid unnecessarily large JPEGs; `--quality` accepts values from 1 to 100. The original also writes and then trashes the generated JPEG during dry runs. The port deliberately makes dry runs read-only. Consequently, dry runs do not validate decoding. An apply operation validates decoding before it can recycle a source.
 
 The original filename regex searches the entire path and then slices the basename as though its date begins at character zero. The port requires a valid leading timestamp in the basename. An unrelated date in a folder or an invalid date cannot accidentally trigger renaming.
 

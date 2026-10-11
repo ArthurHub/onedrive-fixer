@@ -7,8 +7,9 @@ from onedrive_fixer.models import FilePlan, FileResult, Status
 from onedrive_fixer.ui.cli import main
 
 
-def test_json_preview_and_apply_with_keep_original(tmp_path, capsys):
-    from PIL import Image
+@pytest.mark.parametrize("quality_args, luminance", [([], 3), (["--quality", "85"], 5)])
+def test_json_preview_and_apply_with_keep_original(tmp_path, capsys, quality_args, luminance):
+    from PIL import Image, JpegImagePlugin
     from pillow_heif import register_heif_opener
 
     register_heif_opener()
@@ -24,11 +25,18 @@ def test_json_preview_and_apply_with_keep_original(tmp_path, capsys):
     assert preview[0]["dry_run"] is True
     assert list(tmp_path.iterdir()) == [source]
     assert (
-        main(["convert-heic", str(tmp_path), "--apply", "--yes", "--keep-original", "--json"]) == 0
+        main(
+            ["convert-heic", str(tmp_path), "--apply", "--yes", "--keep-original", "--json"]
+            + quality_args
+        )
+        == 0
     )
     applied = json.loads(capsys.readouterr().out)
     assert applied[0]["status"] == Status.COMPLETE.value
     assert source.exists() and source.with_suffix(".jpeg").exists()
+    with Image.open(source.with_suffix(".jpeg")) as jpeg:
+        assert JpegImagePlugin.get_sampling(jpeg) == 2
+        assert jpeg.quantization[0][0] == luminance
 
 
 def test_conflicts_set_failure_exit_code(tmp_path, capsys):

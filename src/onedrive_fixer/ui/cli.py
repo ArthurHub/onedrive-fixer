@@ -53,9 +53,9 @@ def _parser() -> argparse.ArgumentParser:
                 "--quality",
                 type=int,
                 choices=range(1, 101),
-                default=100,
+                default=90,
                 metavar="1-100",
-                help="JPEG quality (default: 100)",
+                help="JPEG quality (default: 90)",
             )
     return parser
 
@@ -77,7 +77,7 @@ def _apply(
     *,
     dry_run: bool,
     keep_original: bool = False,
-    quality: int = 100,
+    quality: int = 90,
     quiet: bool = False,
 ) -> list[FileResult]:
     """
@@ -254,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
             plans,
             dry_run=not args.apply,
             keep_original=getattr(args, "keep_original", False),
-            quality=getattr(args, "quality", 100),
+            quality=getattr(args, "quality", 90),
             quiet=args.json,
         )
         if not args.json and not args.yes and sys.stdin.isatty() and sys.stdout.isatty():

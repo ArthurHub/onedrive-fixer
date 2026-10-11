@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageCms, JpegImagePlugin
 from pillow_heif import register_heif_opener
 
 from onedrive_fixer.adapters.images import PillowHeicConverter
@@ -38,8 +38,9 @@ def heic(tmp_path):
     exif = Image.Exif()
     exif[271] = "Apple"
     exif[306] = "2022:01:01 12:00:00"
+    icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
     with Image.new("RGB", (32, 24), "red") as image:
-        image.save(source, format="HEIF", exif=exif)
+        image.save(source, format="HEIF", exif=exif, icc_profile=icc, xmp=b"<x:xmpmeta />")
     return source
 
 
@@ -180,6 +181,11 @@ def test_real_heic_conversion_and_metadata(heic, keep_original):
         assert jpeg.size == (32, 24)
         assert jpeg.getexif()[271] == "Apple"
         assert jpeg.getpixel((0, 0))[0] > 240
+        assert JpegImagePlugin.get_sampling(jpeg) == 2
+        assert jpeg.quantization[0][0] == 3  # Standard quality-90 luminance table.
+        with Image.open(heic) as original:
+            assert jpeg.info["icc_profile"] == original.info["icc_profile"]
+            assert jpeg.info["xmp"] == original.info["xmp"]
 
 
 def test_multi_image_heic_exports_primary_image(tmp_path):
