@@ -4,6 +4,8 @@
 
 Migrate `web-dev-playground/projects/onedrive-fixer` from TypeScript to Python 3.14 while preserving its two workflows: correcting OneDrive's Apple media filenames and converting HEIC photos to JPEG. Deliver an interactive command interface and scriptable commands. A graphical interface is a future presentation adapter, not part of this migration.
 
+The Python tool also supports reducing oversized JPEGs from earlier conversions, with filename filtering before image inspection and the same preview/apply interface.
+
 The reference `F4VR-ImmersiveFlashlight` project separates source, documentation, external dependencies, generated build output, and development configuration. This project follows that organization with Python packaging conventions: a `src` package, `tests`, `docs`, and `pyproject.toml`. CMake, C++ headers, vcpkg, plugin data, and vendored dependency directories have no useful equivalents here and are not copied.
 
 ## Existing tool and compatibility
@@ -89,7 +91,7 @@ A future GUI can run the same synchronous services on a worker thread, queue pro
 - Existing destination names are checked case insensitively, including dangling links. Duplicate planned destinations are marked as conflicts for every affected source.
 - Apply rechecks the source size, modification time in nanoseconds, and file identity, plus destination availability. A changed or missing source requires another scan. This is a practical stale-plan check, not a cryptographic content guarantee.
 - Scanning skips descendant symlinks and Windows junctions. The explicitly selected root may itself resolve through a link.
-- Publication never overwrites an existing destination. Windows rename enforces this atomically. POSIX uses exclusive hard-link creation followed by removal of the old/staging name. Filesystems without hard-link support report an error rather than falling back to an overwriting rename.
+- Filename correction and HEIC conversion never overwrite an existing destination. Windows rename enforces this atomically. POSIX uses exclusive hard-link creation followed by removal of the old/staging name. Filesystems without hard-link support report an error rather than falling back to an overwriting rename.
 - Conversion stages the output beside the source on the same filesystem. The image adapter normalizes orientation, produces RGB JPEG, retains supported EXIF/ICC/XMP, and decodes the result to verify it. The service publishes the staged file before recycling the HEIC. Failed or interrupted conversion may leave a temporary file, but does not recycle an unconverted original.
 - If recycling fails, report an error that names the saved JPEG and keep both files. Do not delete a successful JPEG to hide the failure. A later scan sees a conflict, leaving cleanup to the user.
 - There is no whole-batch rollback: each file is independent. Recycle Bin operations are recoverable through the operating system; renames can be reversed manually.
@@ -97,6 +99,14 @@ A future GUI can run the same synchronous services on a worker thread, queue pro
 Concurrent edits by another process between checks and the final operation cannot be completely eliminated with portable path APIs. Avoid editing or syncing the same files during apply. Destination creation is protected against concurrent overwrite; source-content coordination with OneDrive is outside this tool's scope.
 
 JPEG is lossy, even at quality 100. Conversion exports the primary HEIC image to 8-bit RGB; auxiliary images, depth data, animation, and HDR capabilities are not preserved. Metadata support is best effort rather than complete container fidelity. Users needing the HEIC container should choose `--keep-original`.
+
+## Previously converted JPEGs
+
+`optimize-jpeg` shares the preview/apply, JSON, progress, review, and recent-folder flows. It filters `.jpeg` filenames containing `_iOS` (case-insensitive) before opening images. Inspection uses JPEG headers without decoding pixels. Online-only candidates may still download through OneDrive; unrelated filenames are not opened. The scan recognizes all-one quantization tables associated with quality 100, regardless of subsampling, and skips other tables. This identifies the encoding signature rather than proving converter provenance. Corrupt candidates produce per-file errors.
+
+The `JpegOptimizer` port keeps header inspection and image encoding out of services. Apply revalidates each source, encodes a staged JPEG at quality 90 with optimized 4:2:0 settings by default, and verifies it by decoding. Non-smaller output is discarded. Before replacing the original path, the service exclusively creates a `.jpeg.bak` copy, flushes it to disk, and rechecks the source stamp. Existing backups are conflicts. Verified smaller output replaces the original path atomically; the backup is retained with `--keep-original` or recycled after successful replacement. Replacement and recycling errors preserve the backup. No source HEIC is needed.
+
+Re-encoding introduces another lossy generation, retains supported EXIF/ICC/XMP, and normalizes orientation as HEIC conversion does. CMYK JPEG re-encoding is rejected to avoid attaching a CMYK profile to RGB output. A second scan skips ordinary quality-90 optimized output. Preview reads headers but neither encodes images nor estimates savings; apply results report actual before/after sizes. Backups retained by the user continue to consume storage.
 
 ## Verification and delivery
 

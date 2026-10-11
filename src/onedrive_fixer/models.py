@@ -80,6 +80,8 @@ class FileResult:
     status: Status
     message: str = ""
     dry_run: bool = False
+    # JPEG size reduction in bytes; None means this is a different operation.
+    bytes_saved: int | None = None
 
 
 @dataclass(frozen=True)

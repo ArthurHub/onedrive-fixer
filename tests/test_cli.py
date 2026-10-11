@@ -70,10 +70,11 @@ def test_fix_names_uses_library_metadata_without_external_processes(tmp_path, mo
     assert (tmp_path / "20220101_120000.jpg").exists()
 
 
-def test_unattended_apply_requires_explicit_confirmation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("command", ["convert-heic", "optimize-jpeg"])
+def test_unattended_apply_requires_explicit_confirmation(tmp_path, monkeypatch, command):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     with pytest.raises(SystemExit) as error:
-        main(["convert-heic", str(tmp_path), "--apply"])
+        main([command, str(tmp_path), "--apply"])
     assert error.value.code == 2
 
 
@@ -278,3 +279,85 @@ def test_prompt_cancellation_exits_without_changes(tmp_path, monkeypatch, capsys
     assert main([]) == 130
     assert "Cancelled." in capsys.readouterr().err
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.fixture
+def converted_jpeg(tmp_path):
+    from PIL import Image
+
+    source = tmp_path / "photo_iOS.jpeg"
+    with Image.new("RGB", (32, 24), "blue") as image:
+        image.save(source, quality=100, subsampling=2)
+    return source
+
+
+@pytest.mark.parametrize("quality_args, luminance", [([], 3), (["--quality", "85"], 5)])
+def test_jpeg_json_preview_and_apply(converted_jpeg, capsys, quality_args, luminance):
+    from PIL import Image, JpegImagePlugin
+
+    source = converted_jpeg
+    original = source.read_bytes()
+    # This unrelated online-only file is modeled by unreadable image content.
+    (source.parent / "holiday.jpeg").write_bytes(b"must not be opened")
+    assert main(["optimize-jpeg", str(source.parent), "--json"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    preview = json.loads(output.out)
+    assert len(preview) == 1
+    assert preview[0]["status"] == Status.READY.value
+    assert preview[0]["destination"] == str(source)
+    assert preview[0]["dry_run"] is True
+    assert "Quality-100" in preview[0]["message"]
+    assert preview[0]["bytes_saved"] == 0
+    assert source.read_bytes() == original
+    assert not source.with_name(source.name + ".bak").exists()
+    assert (
+        main(
+            ["optimize-jpeg", str(source.parent), "--apply", "--yes", "--keep-original", "--json"]
+            + quality_args
+        )
+        == 0
+    )
+    applied = json.loads(capsys.readouterr().out)
+    assert applied[0]["status"] == Status.COMPLETE.value
+    assert "saved" in applied[0]["message"]
+    assert source.stat().st_size < len(original)
+    assert applied[0]["bytes_saved"] == len(original) - source.stat().st_size
+    assert source.with_name(source.name + ".bak").read_bytes() == original
+    with Image.open(source) as jpeg:
+        assert JpegImagePlugin.get_sampling(jpeg) == 2
+        assert jpeg.quantization[0][0] == luminance
+
+
+@pytest.mark.parametrize("apply_changes", [False, True])
+def test_interactive_jpeg_preview_and_apply(converted_jpeg, monkeypatch, capsys, apply_changes):
+    source = converted_jpeg
+    original = source.read_bytes()
+    history = RecentFolders(source.parent / "history.json")
+    monkeypatch.setattr("onedrive_fixer.ui.cli.RecentFolders", lambda: history)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    answers = iter(
+        [
+            "optimize-jpeg",
+            "new",
+            "apply" if apply_changes else "cancel",
+            *(["cancel"] if apply_changes else []),
+            "exit",
+        ]
+    )
+
+    def choose(message, choices, **kwargs):
+        answer = next(answers)
+        assert answer in [choice.value for choice in choices]
+        return answer
+
+    monkeypatch.setattr("onedrive_fixer.ui.cli.select", choose)
+    monkeypatch.setattr("onedrive_fixer.ui.cli.prompt_folder", lambda: str(source.parent))
+    monkeypatch.setattr("onedrive_fixer.ui.cli.confirm", lambda _: True)
+    assert main([]) == 0
+    assert (source.read_bytes() != original) is apply_changes
+    assert source.with_name(source.name + ".bak").exists() is apply_changes
+    output = capsys.readouterr()
+    assert "Ready: 1" in output.out
+    assert "download" in output.err
+    assert ("Total saved:" in output.out) is apply_changes

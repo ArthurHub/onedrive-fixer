@@ -93,3 +93,34 @@ def test_live_progress_handles_literal_names_and_cleans_up_on_failure(monkeypatc
     output = stream.getvalue()
     assert "[red]photo.heic" in output
     assert "\x1b[?25h" in output  # Restore the cursor when the progress display closes.
+
+
+def test_jpeg_summary_totals_actual_reductions_in_mb(capsys):
+    plan = FilePlan(Path("photo_iOS.jpeg"), Status.READY)
+    terminal.show_results(
+        [
+            FileResult(plan, Status.COMPLETE, bytes_saved=1_250_000),
+            FileResult(plan, Status.COMPLETE, bytes_saved=750_000),
+            FileResult(plan, Status.ERROR, "Backup recycling failed", bytes_saved=500_000),
+            FileResult(plan, Status.ERROR, "Encoding failed", bytes_saved=0),
+            FileResult(plan, Status.UNCHANGED, bytes_saved=0),
+            FileResult(plan, Status.READY, dry_run=True, bytes_saved=0),
+        ]
+    )
+    output = capsys.readouterr().out
+    assert output.rstrip().endswith("Total saved: 2.50 MB")
+
+
+def test_jpeg_summary_shows_zero_when_no_files_were_reduced(capsys):
+    plan = FilePlan(Path("photo_iOS.jpeg"), Status.UNCHANGED)
+    terminal.show_results([FileResult(plan, Status.UNCHANGED, bytes_saved=0)])
+    assert capsys.readouterr().out.rstrip().endswith("Total saved: 0.00 MB")
+
+
+@pytest.mark.parametrize("dry_run, bytes_saved", [(True, 0), (False, None)])
+def test_previews_and_other_operations_omit_savings(capsys, dry_run, bytes_saved):
+    plan = FilePlan(Path("photo.jpeg"), Status.READY)
+    terminal.show_results(
+        [FileResult(plan, Status.READY, dry_run=dry_run, bytes_saved=bytes_saved)]
+    )
+    assert "Total saved:" not in capsys.readouterr().out

@@ -45,3 +45,23 @@ class Trash(Protocol):
         Raise on failure instead of falling back to permanent deletion.
         """
         ...
+
+
+class JpegOptimizer(Protocol):
+    """
+    JPEG header inspection and verified re-encoding without modifying the source.
+    """
+
+    def is_quality_100(self, source: Path) -> bool:
+        """
+        Check JPEG quantization tables for quality 100 without decoding pixels.
+        Raise for invalid or unsupported files.
+        """
+        ...
+
+    def convert(self, source: Path, destination: Path, quality: int) -> None:
+        """
+        Write and verify an optimized JPEG while retaining supported photo metadata.
+        Leave the source intact on success or failure.
+        """
+        ...

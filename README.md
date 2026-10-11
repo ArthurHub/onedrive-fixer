@@ -1,6 +1,6 @@
 # OneDrive Fixer
 
-A Python 3.14 tool for fixing Apple media filenames uploaded by OneDrive and converting HEIC photos to JPEG. Run it as an interactive menu or use commands in scripts. The media services have no terminal dependencies and can be reused by a future GUI.
+A Python 3.14 tool for fixing Apple media filenames uploaded by OneDrive, converting HEIC photos to JPEG, and reducing oversized JPEGs from previous conversions. Run it as an interactive menu or use commands in scripts. The media services have no terminal dependencies and can be reused by a future GUI.
 
 ## Setup
 
@@ -56,6 +56,15 @@ onedrive-fixer convert-heic 'C:\Photos' --apply --yes --keep-original
 # Convert and move the originals to the Recycle Bin (legacy behavior).
 onedrive-fixer convert-heic 'C:\Photos' --apply --yes
 
+# Preview size fixes for previously converted JPEGs.
+onedrive-fixer optimize-jpeg 'C:\Photos'
+
+# Optimize in place, retaining originals as .jpeg.bak files.
+onedrive-fixer optimize-jpeg 'C:\Photos' --apply --yes --keep-original
+
+# Optimize in place and move the original JPEGs to the Recycle Bin.
+onedrive-fixer optimize-jpeg 'C:\Photos' --apply --yes
+
 # Machine-readable preview.
 onedrive-fixer fix-names 'C:\Photos' --json
 ```
@@ -66,9 +75,13 @@ Activate `.venv` or use the full executable path from the setup example. `python
 - Capture-local timestamps replace the filename prefix. Suffixes and extension case are retained; attached milliseconds receive a separator: `20241101_164622039_iOS.heic` becomes `20241101_094622_039_iOS.heic`.
 - Photo metadata comes from EXIF `Make` and `DateTimeDigitized`. Video metadata comes from the MOV/MP4 container's creation time and camera make, with Apple's explicit capture offset applied when available. Files without a usable creation date are skipped.
 - HEIC conversion writes `.jpeg` beside each source with quality 90, 4:2:0 color subsampling, and optimized encoding to reduce file size. Set `--quality 1-100` to change the quality. Conversion retains supported EXIF, color profiles, and XMP metadata. JPEG is lossy even at quality 100; use `--keep-original` to retain the original HEIC quality and features.
+- JPEG optimization recursively filters filenames first: only `.jpeg` files containing `_iOS` are candidates, ignoring case. Other files are never opened for image inspection. Candidate JPEG headers must have the all-one quantization tables used by quality-100 encoders; any color subsampling qualifies. Lower-quality JPEGs, including earlier optimized files and Photos re-saves, are skipped. Custom quantization tables that do not match this signature are skipped too; filenames alone cannot prove which application created a file.
+- Inspecting online-only OneDrive candidates may download them, even during preview. Preview does not re-encode files or estimate the eventual savings. Apply uses quality 90 by default (`--quality 1-100` overrides it), 4:2:0 subsampling, and optimized encoding. It verifies output and replaces a JPEG at the same path only when the new file is smaller. Results report the before/after byte counts and savings. Re-encoding is lossy; supported EXIF, ICC, and XMP are retained.
+- JPEG optimization ends with the total JPEG size saved in MB (1 MB = 1,000,000 bytes), including files reduced successfully even if recycling their backup failed. Skips and failed replacements contribute zero; previews do not show a savings total. JSON results include `bytes_saved` per file. This measures JPEG size reduction; retained backups continue to consume storage.
+- JPEG optimization creates an exclusive `.jpeg.bak` copy before replacing the original. `--keep-original` retains that backup; otherwise it goes to the Recycle Bin after successful replacement. An existing backup is a conflict and is never overwritten. Failed replacement preserves the original backup; failed recycling keeps both the optimized JPEG and its backup and reports an error. Retained backups continue to consume storage until you remove or move them.
 - Existing destinations and duplicate planned destinations are reported as conflicts. Files changed since scanning are rejected. Links and junctions inside the scanned tree are skipped.
 - Each JPEG is staged and decoded successfully before publication and source recycling. Failed conversion preserves the original. A recycling failure preserves both files and reports their state.
-- Dry runs only scan and validate plans. They do not test HEIC decoding or Recycle Bin availability.
+- Dry runs only scan and validate plans. JPEG optimization inspects candidate headers; dry runs do not test full image decoding, encoding, or Recycle Bin availability.
 - Interactive mode remembers the five most recent folders in `%LOCALAPPDATA%\onedrive-fixer\history.json` on Windows; it can read the old temporary-folder history on first use.
 
 Exit codes: `0` success (including a clean preview or declined confirmation), `1` file errors/conflicts or an operational failure, `2` invalid command arguments, `130` cancellation. Skipped non-Apple files and unknown dates are normal scan results.

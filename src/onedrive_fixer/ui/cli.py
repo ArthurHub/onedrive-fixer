@@ -13,7 +13,14 @@ import questionary
 from onedrive_fixer.adapters.history import RecentFolders
 from onedrive_fixer.adapters.metadata import MediaMetadataReader
 from onedrive_fixer.models import FilePlan, FileResult, Status
-from onedrive_fixer.services import convert_heic, fix_names, scan_heic, scan_names
+from onedrive_fixer.services import (
+    convert_heic,
+    fix_names,
+    optimize_jpeg,
+    scan_heic,
+    scan_jpeg,
+    scan_names,
+)
 from onedrive_fixer.ui.terminal import (
     STATUS_LABELS,
     confirm,
@@ -21,6 +28,7 @@ from onedrive_fixer.ui.terminal import (
     report_progress,
     select,
     show_error,
+    show_jpeg_notice,
     show_results,
     show_welcome,
 )
@@ -31,12 +39,13 @@ def _parser() -> argparse.ArgumentParser:
     Build menu options and subcommands that preview changes unless --apply is given.
     """
     parser = argparse.ArgumentParser(
-        description="Fix OneDrive media names or convert HEIC to JPEG."
+        description="Fix OneDrive media names, convert HEIC, or reduce converted JPEG sizes."
     )
     commands = parser.add_subparsers(dest="command")
     for command, help_text in [
         ("fix-names", "Fix Apple media filename timestamps"),
         ("convert-heic", "Convert HEIC to JPEG and recycle originals"),
+        ("optimize-jpeg", "Reduce quality-100 _iOS.jpeg files in place"),
     ]:
         sub = commands.add_parser(command, help=help_text)
         sub.add_argument("folder", type=Path)
@@ -47,8 +56,16 @@ def _parser() -> argparse.ArgumentParser:
             "--yes", "-y", action="store_true", help="Confirm --apply without a prompt"
         )
         sub.add_argument("--json", action="store_true", help="Print machine-readable results")
-        if command == "convert-heic":
-            sub.add_argument("--keep-original", action="store_true", help="Keep HEIC originals")
+        if command in {"convert-heic", "optimize-jpeg"}:
+            sub.add_argument(
+                "--keep-original",
+                action="store_true",
+                help=(
+                    "Keep HEIC originals"
+                    if command == "convert-heic"
+                    else "Keep original JPEGs as .jpeg.bak files"
+                ),
+            )
             sub.add_argument(
                 "--quality",
                 type=int,
@@ -68,6 +85,12 @@ def _scan(command: str, folder: Path, quiet: bool = False) -> list[FilePlan]:
     with report_progress(quiet=quiet) as callback:
         if command == "fix-names":
             return scan_names(folder, MediaMetadataReader(), callback)
+        if command == "optimize-jpeg":
+            from onedrive_fixer.adapters.images import PillowJpegOptimizer
+
+            if not quiet:
+                show_jpeg_notice()
+            return scan_jpeg(folder, PillowJpegOptimizer(), callback)
         return scan_heic(folder, callback)
 
 
@@ -82,9 +105,21 @@ def _apply(
 ) -> list[FileResult]:
     """
     Run the selected operation with CLI options and optional terminal progress.
-    Preview through shared plan validation without loading the native image backend.
+    Preview through shared plan validation without re-encoding any images.
     """
     with report_progress(quiet=quiet) as callback:
+        if command == "optimize-jpeg":
+            from onedrive_fixer.adapters.images import PillowJpegOptimizer, RecycleBin
+
+            return optimize_jpeg(
+                plans,
+                PillowJpegOptimizer(),
+                RecycleBin(),
+                dry_run=dry_run,
+                keep_original=keep_original,
+                quality=quality,
+                progress=callback,
+            )
         if command == "fix-names" or dry_run:
             return fix_names(plans, dry_run=dry_run, progress=callback)
         # A preview does not require loading the native HEIC library.
@@ -117,6 +152,11 @@ def _show(results: list[FileResult], as_json: bool = False) -> None:
                         "status": result.status.value,
                         "message": result.message,
                         "dry_run": result.dry_run,
+                        **(
+                            {"bytes_saved": result.bytes_saved}
+                            if result.bytes_saved is not None
+                            else {}
+                        ),
                     }
                     for result in results
                 ],
@@ -149,13 +189,13 @@ def _review(
         if counts[status]
     ]
     if allow_apply and counts[Status.READY]:
-        choices.append(questionary.Choice("Apply changes", value="apply"))
         if allow_preview:
             choices.append(questionary.Choice("Preview again", value="preview"))
+        choices.append(questionary.Choice("Apply changes", value="apply"))
     choices.append(questionary.Choice("Cancel" if allow_apply else "Done", value="cancel"))
     while True:
         choice = select("Review results:", choices, default="cancel")
-        if choice in {"apply", "preview", "cancel"}:
+        if choice in {"preview", "apply", "cancel"}:
             return choice
         show_results([result for result in results if result.status.value == choice], details=True)
 
@@ -203,6 +243,7 @@ def _menu() -> int:
             [
                 questionary.Choice("Fix OneDrive media filenames", value="fix-names"),
                 questionary.Choice("Convert HEIC photos to JPEG", value="convert-heic"),
+                questionary.Choice("Reduce previously converted JPEG sizes", value="optimize-jpeg"),
                 questionary.Choice("Exit", value="exit"),
             ],
         )
@@ -222,6 +263,10 @@ def _menu() -> int:
             if command == "convert-heic":
                 keep_original = confirm(
                     "Keep the original HEIC files? (No moves them to Recycle Bin)"
+                )
+            elif command == "optimize-jpeg":
+                keep_original = confirm(
+                    "Keep original JPEGs as .jpeg.bak files? (No moves them to Recycle Bin)"
                 )
             _review(_apply(command, plans, dry_run=False, keep_original=keep_original))
         except (OSError, ValueError) as error:

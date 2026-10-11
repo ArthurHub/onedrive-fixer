@@ -77,7 +77,7 @@ def show_welcome() -> None:
     """
     Console().print(
         Panel(
-            "Fix Apple media filenames or convert HEIC photos to JPEG.\n"
+            "Fix Apple media filenames, convert HEIC, or reduce converted JPEG sizes.\n"
             "Review a preview before applying changes.",
             title="OneDrive Fixer",
             border_style="cyan",
@@ -91,6 +91,18 @@ def show_error(message: str) -> None:
     Write a literal error or warning to stderr without interpreting path markup.
     """
     Console(stderr=True).print(Text(message, style="bold red"))
+
+
+def show_jpeg_notice() -> None:
+    """
+    Explain cloud downloads and original handling before scanning JPEG candidates.
+    """
+    Console(stderr=True).print(
+        "Only .jpeg filenames containing _iOS are opened (case-insensitive).\n"
+        "Checking online-only candidates may download them, including during preview.\n"
+        "Apply replaces only quality-100 JPEGs when the verified output is smaller.\n"
+        "Originals go to Recycle Bin unless kept as .jpeg.bak files."
+    )
 
 
 def show_results(results: list[FileResult], *, details: bool = False) -> None:
@@ -133,6 +145,9 @@ def show_results(results: list[FileResult], *, details: bool = False) -> None:
         label, style = STATUS_LABELS[status]
         summary.append(f"{label}: {count}", style=style)
     console.print(summary)
+    if any(result.bytes_saved is not None and not result.dry_run for result in results):
+        total_saved = sum(result.bytes_saved or 0 for result in results if not result.dry_run)
+        console.print(f"Total saved: {total_saved / 1_000_000:,.2f} MB", style="green")
 
 
 @contextmanager
