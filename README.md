@@ -21,6 +21,21 @@ uv sync --extra dev
 uv run onedrive-fixer
 ```
 
+## Interactive menu
+
+Run `onedrive-fixer` without arguments to select options with the arrow keys and Enter.
+Choose one of the five most recent folders or enter a new path with Tab completion.
+Scans show colored category counts first. Choose a category to print just those files
+(Ready, Unchanged, Not Apple, Unknown date, Conflict, or Error), then return to the
+review menu to inspect another category. Live progress tracks scanning and processing.
+Choose Apply changes, Preview again, or Cancel (the default). Completed operations
+also offer category inspection. Ctrl+C exits cleanly.
+
+Questionary supplies the prompts and Rich supplies tables, colors, and progress.
+For the best display, use Windows Terminal or the VS Code integrated terminal.
+Redirected previews use plain-text summaries. `--yes` skips all review prompts;
+`--json` provides all file results as clean machine-readable JSON.
+
 ## Commands
 
 Commands preview by default. `--apply` changes files; `--yes` confirms without prompting and is required for unattended changes.
@@ -54,7 +69,7 @@ Activate `.venv` or use the full executable path from the setup example. `python
 - Existing destinations and duplicate planned destinations are reported as conflicts. Files changed since scanning are rejected. Links and junctions inside the scanned tree are skipped.
 - Each JPEG is staged and decoded successfully before publication and source recycling. Failed conversion preserves the original. A recycling failure preserves both files and reports their state.
 - Dry runs only scan and validate plans. They do not test HEIC decoding or Recycle Bin availability.
-- Interactive mode remembers the three most recent folders in `%LOCALAPPDATA%\onedrive-fixer\history.json` on Windows; it can read the old temporary-folder history on first use.
+- Interactive mode remembers the five most recent folders in `%LOCALAPPDATA%\onedrive-fixer\history.json` on Windows; it can read the old temporary-folder history on first use.
 
 Exit codes: `0` success (including a clean preview or declined confirmation), `1` file errors/conflicts or an operational failure, `2` invalid command arguments, `130` cancellation. Skipped non-Apple files and unknown dates are normal scan results.
 

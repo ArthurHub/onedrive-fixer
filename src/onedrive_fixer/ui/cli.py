@@ -8,10 +8,22 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import questionary
+
 from onedrive_fixer.adapters.history import RecentFolders
 from onedrive_fixer.adapters.metadata import MediaMetadataReader
-from onedrive_fixer.models import FilePlan, FileResult, Progress, Status
+from onedrive_fixer.models import FilePlan, FileResult, Status
 from onedrive_fixer.services import convert_heic, fix_names, scan_heic, scan_names
+from onedrive_fixer.ui.terminal import (
+    STATUS_LABELS,
+    confirm,
+    prompt_folder,
+    report_progress,
+    select,
+    show_error,
+    show_results,
+    show_welcome,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -48,22 +60,15 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _progress(event: Progress) -> None:
-    """
-    Render file progress to stderr so stdout remains available for command results.
-    """
-    print(f"{event.phase} {event.current}/{event.total}: {event.path.name}", file=sys.stderr)
-
-
 def _scan(command: str, folder: Path, quiet: bool = False) -> list[FilePlan]:
     """
     Select the scan service and construct its metadata adapter when required.
     Suppress progress notifications for machine-readable output.
     """
-    callback = None if quiet else _progress
-    if command == "fix-names":
-        return scan_names(folder, MediaMetadataReader(), callback)
-    return scan_heic(folder, callback)
+    with report_progress(quiet=quiet) as callback:
+        if command == "fix-names":
+            return scan_names(folder, MediaMetadataReader(), callback)
+        return scan_heic(folder, callback)
 
 
 def _apply(
@@ -79,21 +84,21 @@ def _apply(
     Run the selected operation with CLI options and optional terminal progress.
     Preview through shared plan validation without loading the native image backend.
     """
-    callback = None if quiet else _progress
-    if command == "fix-names" or dry_run:
-        return fix_names(plans, dry_run=dry_run, progress=callback)
-    # A preview does not require loading the native HEIC library.
-    from onedrive_fixer.adapters.images import PillowHeicConverter, RecycleBin
+    with report_progress(quiet=quiet) as callback:
+        if command == "fix-names" or dry_run:
+            return fix_names(plans, dry_run=dry_run, progress=callback)
+        # A preview does not require loading the native HEIC library.
+        from onedrive_fixer.adapters.images import PillowHeicConverter, RecycleBin
 
-    return convert_heic(
-        plans,
-        PillowHeicConverter(),
-        RecycleBin(),
-        dry_run=dry_run,
-        keep_original=keep_original,
-        quality=quality,
-        progress=callback,
-    )
+        return convert_heic(
+            plans,
+            PillowHeicConverter(),
+            RecycleBin(),
+            dry_run=dry_run,
+            keep_original=keep_original,
+            quality=quality,
+            progress=callback,
+        )
 
 
 def _show(results: list[FileResult], as_json: bool = False) -> None:
@@ -119,15 +124,7 @@ def _show(results: list[FileResult], as_json: bool = False) -> None:
             )
         )
         return
-    for result in results:
-        destination = f" -> {result.plan.destination.name}" if result.plan.destination else ""
-        detail = f" ({result.message})" if result.message else ""
-        print(f"{result.status.value}: {result.plan.source}{destination}{detail}")
-    counts = Counter(result.status.value for result in results)
-    print(
-        f"{len(results)} media files; "
-        + ", ".join(f"{key}: {value}" for key, value in counts.items())
-    )
+    show_results(results)
 
 
 def _failed(results: list[FileResult]) -> bool:
@@ -137,34 +134,60 @@ def _failed(results: list[FileResult]) -> bool:
     return any(result.status in {Status.ERROR, Status.CONFLICT} for result in results)
 
 
-def _confirm(message: str) -> bool:
+def _review(
+    results: list[FileResult], *, allow_apply: bool = False, allow_preview: bool = False
+) -> str:
     """
-    Accept only an explicit yes response, treating empty input as cancellation.
+    Show counts and let the user print individual categories without changing files.
+    Offer apply/preview actions only when requested and changes are ready.
     """
-    return input(f"{message} [y/N] ").strip().lower() in {"y", "yes"}
+    _show(results)
+    counts = Counter(result.status for result in results)
+    choices = [
+        questionary.Choice(f"Print {label} files ({counts[status]})", value=status.value)
+        for status, (label, _) in STATUS_LABELS.items()
+        if counts[status]
+    ]
+    if allow_apply and counts[Status.READY]:
+        choices.append(questionary.Choice("Apply changes", value="apply"))
+        if allow_preview:
+            choices.append(questionary.Choice("Preview again", value="preview"))
+    choices.append(questionary.Choice("Cancel" if allow_apply else "Done", value="cancel"))
+    while True:
+        choice = select("Review results:", choices, default="cancel")
+        if choice in {"apply", "preview", "cancel"}:
+            return choice
+        show_results([result for result in results if result.status.value == choice], details=True)
 
 
-def _choose_folder(history: RecentFolders) -> Path:
+def _choose_folder(history: RecentFolders) -> Path | None:
     """
-    Prompt for an existing folder or recent-folder selection and remember its path.
+    Select a recent folder or enter a path with completion; Back returns None.
     Report preference-write errors without preventing the chosen operation.
     """
     recent = history.load()
-    for index, folder in enumerate(recent, 1):
-        print(f"{index}. {folder}")
     while True:
-        value = input("Enter a folder path or recent-folder number: ").strip().strip('"')
-        if value.isdigit() and 1 <= int(value) <= len(recent):
-            value = recent[int(value) - 1]
+        choice = select(
+            "Choose a folder:",
+            [questionary.Choice(folder, value=str(index)) for index, folder in enumerate(recent)]
+            + [
+                questionary.Choice("Enter another folder…", value="new"),
+                questionary.Choice("Back to main menu", value="back"),
+            ],
+        )
+        if choice == "back":
+            return None
+        value = prompt_folder() if choice == "new" else recent[int(choice)]
+        value = value.strip().strip('"')
         folder = Path(value).expanduser()
         if value and folder.is_dir():
             folder = folder.resolve()
             try:
                 history.remember(folder)
             except OSError as error:
-                print(f"Could not save recent folders: {error}", file=sys.stderr)
+                show_error(f"Could not save recent folders: {error}")
             return folder
-        print("The specified folder does not exist.")
+        show_error("The specified folder does not exist.")
 
 
 def _menu() -> int:
@@ -173,34 +196,36 @@ def _menu() -> int:
     Report operational failures and return to the menu so another task can be chosen.
     """
     history = RecentFolders()
+    show_welcome()
     while True:
-        print("\n1. Fix OneDrive media file names\n2. Convert HEIC photos to JPEG\n3. Exit")
-        choice = input("Select an option: ").strip()
-        if choice == "3":
+        command = select(
+            "What would you like to do?",
+            [
+                questionary.Choice("Fix OneDrive media filenames", value="fix-names"),
+                questionary.Choice("Convert HEIC photos to JPEG", value="convert-heic"),
+                questionary.Choice("Exit", value="exit"),
+            ],
+        )
+        if command == "exit":
             return 0
-        if choice not in {"1", "2"}:
-            continue
-        command = "fix-names" if choice == "1" else "convert-heic"
         try:
             folder = _choose_folder(history)
+            if folder is None:
+                continue
             plans = _scan(command, folder)
             preview = _apply(command, plans, dry_run=True)
-            _show(preview)
-            if not any(result.status == Status.READY for result in preview):
+            while (action := _review(preview, allow_apply=True, allow_preview=True)) == "preview":
+                preview = _apply(command, plans, dry_run=True)
+            if action != "apply":
                 continue
             keep_original = False
             if command == "convert-heic":
-                keep_original = _confirm("Keep the original HEIC files?")
-            action = input("1. Apply  2. Dry run  3. Cancel [3]: ").strip()
-            if action == "2":
-                _show(_apply(command, plans, dry_run=True))
-                if not _confirm("Apply for real?"):
-                    continue
-            elif action != "1":
-                continue
-            _show(_apply(command, plans, dry_run=False, keep_original=keep_original))
+                keep_original = confirm(
+                    "Keep the original HEIC files? (No moves them to Recycle Bin)"
+                )
+            _review(_apply(command, plans, dry_run=False, keep_original=keep_original))
         except (OSError, ValueError) as error:
-            print(f"Error: {error}", file=sys.stderr)
+            show_error(f"Error: {error}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -218,10 +243,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.apply and not args.yes and (args.json or not sys.stdin.isatty()):
             parser.error("Noninteractive --apply requires --yes.")
         plans = _scan(args.command, args.folder, args.json)
-        if args.apply and not args.yes:
-            _show(_apply(args.command, plans, dry_run=True))
-            if not _confirm("Apply these operations?"):
-                return 0
+        if (
+            args.apply
+            and not args.yes
+            and _review(_apply(args.command, plans, dry_run=True), allow_apply=True) != "apply"
+        ):
+            return 0
         results = _apply(
             args.command,
             plans,
@@ -230,10 +257,13 @@ def main(argv: list[str] | None = None) -> int:
             quality=getattr(args, "quality", 100),
             quiet=args.json,
         )
-        _show(results, args.json)
+        if not args.json and not args.yes and sys.stdin.isatty() and sys.stdout.isatty():
+            _review(results)
+        else:
+            _show(results, args.json)
         return 1 if _failed(results) else 0
     except (OSError, ValueError) as error:
-        print(f"Error: {error}", file=sys.stderr)
+        show_error(f"Error: {error}")
         return 1
     except EOFError, KeyboardInterrupt:
         print("\nCancelled.", file=sys.stderr)

@@ -22,8 +22,8 @@ The original code has a menu with name fixing, HEIC conversion, and exit. It rec
 | Conversion scan | Recursively find `.heic`, case insensitive |
 | JPEG output | Same folder/stem, `.jpeg` extension, default quality 100 |
 | Original after conversion | Recycle after verified JPEG publication; `--keep-original` is also available |
-| Recent folders | Three most recent unique paths; tolerate malformed cache and read the old cache if needed |
-| User interaction | Interactive menu, progress, preview, confirmation, summary; also scriptable subcommands |
+| Recent folders | Five most recent unique paths; tolerate malformed cache and read the old cache if needed |
+| User interaction | Arrow-key menus, folder completion, category counts with optional file lists, progress, confirmation; also scriptable subcommands |
 
 The original converter's comment says quality 0.92, but its executed code uses 1.0; the port follows the code. It also writes and then trashes the generated JPEG during dry runs. The port deliberately makes dry runs read-only. Consequently, dry runs do not validate decoding. An apply operation validates decoding before it can recycle a source.
 
@@ -66,7 +66,7 @@ onedrive-fixer/
   tests/                     Unit, filesystem, codec, CLI, optional legacy checks
 ```
 
-The dependency direction is `ui -> services -> models/naming/ports`. Infrastructure implements the protocols; the CLI constructs and injects concrete adapters. Services import neither the CLI nor Pillow, PyAV, prompts, or preferences. They use `pathlib`/`os` for local filesystem operations. A generic virtual filesystem abstraction would add complexity without a current consumer.
+The dependency direction is `ui -> services -> models/naming/ports`. Infrastructure implements the protocols; the CLI constructs and injects concrete adapters. `ui/terminal.py` uses Questionary for arrow-key selection, confirmations, and directory completion, and Rich for colored result summaries, optional category file tables, and live progress on stderr. The review menu stays available even when no changes are ready. Redirected commands show summaries without prompts; redirected progress uses plain lines, and JSON commands retain all per-file results without terminal rendering. Services import neither the CLI nor Pillow, PyAV, prompts, or preferences. They use `pathlib`/`os` for local filesystem operations. A generic virtual filesystem abstraction would add complexity without a current consumer.
 
 Use standard-library `argparse` for CLI parsing, dataclasses for typed values, and protocols for external operations. Use [Pillow](https://pillow.readthedocs.io/en/stable/installation/python-support.html) and [pillow-heif](https://pypi.org/project/pillow-heif/) for photo metadata, HEIC decoding, and JPEG encoding; [PyAV](https://pyav.basswood.io/docs/stable/overview/installation.html) for video metadata; and [Send2Trash](https://pypi.org/project/Send2Trash/) for reversible source removal. Standard wheels bundle native codec libraries, including FFmpeg for PyAV. There is no external executable installation, PATH lookup, or metadata subprocess. Dependencies are resolved and tested under Python 3.14.
 
