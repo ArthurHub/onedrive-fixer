@@ -2,9 +2,10 @@
 HEIC decoding and verified JPEG encoding using Pillow and libheif.
 """
 
+from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, JpegImagePlugin
 from pillow_heif import register_heif_opener
 from send2trash import send2trash
 
@@ -67,21 +68,33 @@ class PillowHeicConverter:
 
 class PillowJpegOptimizer:
     """
-    Inspect quality-100 JPEG headers and re-encode using the HEIC export settings.
+    Inspect JPEG headers and re-encode using the HEIC export settings.
     Inspection does not decode pixels but may hydrate an online-only OneDrive file.
     """
 
-    def is_quality_100(self, source: Path) -> bool:
+    def __init__(self) -> None:
         """
-        Match all-one quantization tables used by quality-100 JPEG encoders.
-        Accept any color subsampling; do not decode the image during inspection.
+        Build reference quantization tables using the quality-90 JPEG encoder.
+        Keep the reference in memory without decoding any JPEG pixels.
+        """
+        with BytesIO() as buffer:
+            with Image.new("RGB", (8, 8)) as reference:
+                reference.save(buffer, format="JPEG", quality=90, subsampling=2)
+            buffer.seek(0)
+            with Image.open(buffer) as reference:
+                self._quality_90_tables = reference.quantization
+
+    def needs_optimization(self, source: Path) -> bool:
+        """
+        Match JPEGs unless they already use quality-90 tables and 4:2:0 sampling.
+        Inspect headers without decoding pixels.
         """
         with Image.open(source) as image:
             if image.format != "JPEG":
                 raise ValueError("Source is not a JPEG image.")
-            tables = image.quantization
-            return bool(tables) and all(
-                len(table) == 64 and all(value == 1 for value in table) for table in tables.values()
+            return not (
+                image.quantization == self._quality_90_tables
+                and JpegImagePlugin.get_sampling(image) == 2
             )
 
     def convert(self, source: Path, destination: Path, quality: int) -> None:

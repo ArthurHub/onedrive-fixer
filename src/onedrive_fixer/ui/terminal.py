@@ -100,7 +100,8 @@ def show_jpeg_notice() -> None:
     Console(stderr=True).print(
         "Only .jpeg filenames containing _iOS are opened (case-insensitive).\n"
         "Checking online-only candidates may download them, including during preview.\n"
-        "Apply replaces only quality-100 JPEGs when the verified output is smaller.\n"
+        "JPEGs already using quality 90 with 4:2:0 color sampling are skipped.\n"
+        "Apply replaces eligible JPEGs only when the verified output is smaller.\n"
         "Originals go to Recycle Bin unless kept as .jpeg.bak files."
     )
 

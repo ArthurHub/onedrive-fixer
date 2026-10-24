@@ -312,7 +312,7 @@ def test_jpeg_json_preview_and_apply(converted_jpeg, capsys, quality_args, lumin
     assert preview[0]["status"] == Status.READY.value
     assert preview[0]["destination"] == str(source)
     assert preview[0]["dry_run"] is True
-    assert "Quality-100" in preview[0]["message"]
+    assert "differs from quality 90 with 4:2:0" in preview[0]["message"]
     assert preview[0]["bytes_saved"] == 0
     assert source.read_bytes() == original
     assert not source.with_name(source.name + ".bak").exists()

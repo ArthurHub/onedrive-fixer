@@ -214,14 +214,14 @@ def scan_jpeg(
 ) -> list[FilePlan]:
     """
     Filter .jpeg names containing _iOS before opening only candidate JPEG headers.
-    Plan quality-100 files regardless of subsampling; reads may hydrate cloud files.
+    Skip quality-90 4:2:0 files; reads may hydrate cloud files.
     """
     files = _files(folder, frozenset({".jpeg"}), name_filter=lambda name: "_ios" in name.casefold())
     plans = []
     for index, source in enumerate(files, 1):
         try:
             stamp = FileStamp.read(source)
-            if optimizer.is_quality_100(source):
+            if optimizer.needs_optimization(source):
                 # Hydration can change filesystem identity; capture the hydrated stamp.
                 stamp = FileStamp.read(source)
                 backup = _jpeg_backup(source)
@@ -229,12 +229,17 @@ def scan_jpeg(
                 message = (
                     f"Backup already exists: {backup}"
                     if status == Status.CONFLICT
-                    else f"Quality-100 JPEG; {stamp.size:,} bytes. Backup: {backup}"
+                    else (
+                        "JPEG differs from quality 90 with 4:2:0; "
+                        f"{stamp.size:,} bytes. Backup: {backup}"
+                    )
                 )
                 plan = FilePlan(source, status, source, stamp, message)
             else:
                 plan = FilePlan(
-                    source, Status.UNCHANGED, message="JPEG is not quality 100; skipped."
+                    source,
+                    Status.UNCHANGED,
+                    message="JPEG already uses quality 90 with 4:2:0; skipped.",
                 )
         except Exception as error:
             plan = FilePlan(source, Status.ERROR, message=str(error))
@@ -368,7 +373,7 @@ def optimize_jpeg(
     progress: ProgressCallback | None = None,
 ) -> list[FileResult]:
     """
-    Preview or replace quality-100 JPEGs only when verified output is smaller.
+    Preview or replace eligible JPEGs only when verified output is smaller.
     Back up originals before replacement, keeping or recycling them after success.
     """
     if not 1 <= quality <= 100:
@@ -380,8 +385,8 @@ def optimize_jpeg(
         Preserve the original or its backup if conversion or publication fails.
         """
         assert plan.stamp is not None
-        if not optimizer.is_quality_100(plan.source):
-            raise ValueError("Source is no longer quality 100; scan again.")
+        if not optimizer.needs_optimization(plan.source):
+            raise ValueError("Source already uses quality 90 with 4:2:0; scan again.")
         descriptor, filename = tempfile.mkstemp(
             prefix=".onedrive-fixer-", suffix=".jpeg", dir=plan.source.parent
         )

@@ -45,7 +45,7 @@ def _parser() -> argparse.ArgumentParser:
     for command, help_text in [
         ("fix-names", "Fix Apple media filename timestamps"),
         ("convert-heic", "Convert HEIC to JPEG and recycle originals"),
-        ("optimize-jpeg", "Reduce quality-100 _iOS.jpeg files in place"),
+        ("optimize-jpeg", "Reduce _iOS.jpeg files unless already quality 90 with 4:2:0"),
     ]:
         sub = commands.add_parser(command, help=help_text)
         sub.add_argument("folder", type=Path)

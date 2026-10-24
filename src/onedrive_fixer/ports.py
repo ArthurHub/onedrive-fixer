@@ -52,9 +52,9 @@ class JpegOptimizer(Protocol):
     JPEG header inspection and verified re-encoding without modifying the source.
     """
 
-    def is_quality_100(self, source: Path) -> bool:
+    def needs_optimization(self, source: Path) -> bool:
         """
-        Check JPEG quantization tables for quality 100 without decoding pixels.
+        Check whether a JPEG differs from quality 90 with 4:2:0 without decoding pixels.
         Raise for invalid or unsupported files.
         """
         ...

@@ -10,19 +10,20 @@ from onedrive_fixer.services import optimize_jpeg, scan_jpeg
 
 
 @pytest.fixture
-def jpeg(tmp_path):
+def jpeg(tmp_path, request):
     source = tmp_path / "20260820_075317_294_iOS.jpeg"
     exif = Image.Exif()
     exif[271] = "Apple"
     exif[306] = "2026:08:20 07:53:17"
     icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
     pixels = random.Random(42).randbytes(128 * 96 * 3)
+    quality, sampling = getattr(request, "param", (100, 0))
     with Image.frombytes("RGB", (128, 96), pixels) as image:
         image.save(
             source,
             format="JPEG",
-            quality=100,
-            subsampling=0,
+            quality=quality,
+            subsampling=sampling,
             exif=exif,
             icc_profile=icc,
             xmp=b"<x:xmpmeta />",
@@ -40,21 +41,32 @@ class RecordingTrash:
         source.unlink()
 
 
-@pytest.mark.parametrize(
-    "quality, sampling, expected", [(100, 0, True), (100, 2, True), (95, 0, False), (90, 2, False)]
-)
+@pytest.mark.parametrize("quality", [75, 85, 90, 92, 95, 100])
+@pytest.mark.parametrize("sampling", [0, 1, 2])
+@pytest.mark.parametrize("optimized", [False, True])
 def test_quality_detection_reads_headers_without_decoding(
-    tmp_path, monkeypatch, quality, sampling, expected
+    tmp_path, monkeypatch, quality, sampling, optimized
 ):
     source = tmp_path / "photo_iOS.jpeg"
     with Image.new("RGB", (16, 16), "red") as image:
-        image.save(source, quality=quality, subsampling=sampling)
+        image.save(source, quality=quality, subsampling=sampling, optimize=optimized)
 
     def no_decode(*args, **kwargs):
         pytest.fail("Scanning decoded JPEG pixels")
 
     monkeypatch.setattr(JpegImagePlugin.JpegImageFile, "load", no_decode)
-    assert PillowJpegOptimizer().is_quality_100(source) is expected
+    assert PillowJpegOptimizer().needs_optimization(source) is not (quality == 90 and sampling == 2)
+
+
+def test_custom_tables_with_quality_90_first_entries_are_eligible(tmp_path):
+    source = tmp_path / "custom_iOS.jpeg"
+    with Image.new("RGB", (16, 16)) as image:
+        image.save(source, quality=90, subsampling=2)
+        with Image.open(source) as reference:
+            tables = reference.quantization
+        tables[0][-1] += 1
+        image.save(source, qtables=tables, subsampling=2)
+    assert PillowJpegOptimizer().needs_optimization(source)
 
 
 def test_scan_filters_names_before_opening_and_recurses(jpeg, monkeypatch):
@@ -68,6 +80,7 @@ def test_scan_filters_names_before_opening_and_recurses(jpeg, monkeypatch):
         image.save(other, quality=100, subsampling=2)
     opened = []
     image_open = Image.open
+    optimizer = PillowJpegOptimizer()
 
     def record_open(path, *args, **kwargs):
         opened.append(path)
@@ -75,17 +88,17 @@ def test_scan_filters_names_before_opening_and_recurses(jpeg, monkeypatch):
 
     monkeypatch.setattr(Image, "open", record_open)
     events = []
-    plans = scan_jpeg(root, PillowJpegOptimizer(), events.append)
+    plans = scan_jpeg(root, optimizer, events.append)
     assert opened == [jpeg, other]
     assert [plan.source for plan in plans] == [jpeg, other]
     assert all(plan.status == Status.READY for plan in plans)
     assert events[-1].current == events[-1].total == 2
 
 
-def test_scan_skips_lower_quality_and_reports_corrupt_candidates(tmp_path):
+def test_scan_skips_quality_90_420_and_reports_corrupt_candidates(tmp_path):
     good = tmp_path / "good_iOS.jpeg"
     with Image.new("RGB", (16, 16)) as image:
-        image.save(good, quality=90, subsampling=0)
+        image.save(good, quality=90, subsampling=2)
     (tmp_path / "broken_iOS.jpeg").write_bytes(b"broken JPEG")
     with Image.new("RGB", (16, 16)) as image:
         image.save(tmp_path / "disguised_iOS.jpeg", format="PNG")
@@ -105,7 +118,7 @@ def test_preview_writes_nothing_and_keeps_diagnostic_message(jpeg):
         def convert(self, *args):
             pytest.fail("Preview attempted encoding")
 
-        def is_quality_100(self, *args):
+        def needs_optimization(self, *args):
             pytest.fail("Preview reopened an inspected image")
 
         def move(self, *args):
@@ -114,12 +127,13 @@ def test_preview_writes_nothing_and_keeps_diagnostic_message(jpeg):
     result = optimize_jpeg(plans, Unused(), Unused())[0]
     assert result.status == Status.READY and result.dry_run
     assert result.bytes_saved == 0
-    assert "Quality-100" in result.message
+    assert "differs from quality 90 with 4:2:0" in result.message
     assert jpeg.read_bytes() == original
     assert list(jpeg.parent.iterdir()) == [jpeg]
 
 
 @pytest.mark.parametrize("keep_original", [False, True])
+@pytest.mark.parametrize("jpeg", [(100, 0), (92, 0), (90, 0)], indirect=True)
 def test_apply_reduces_size_preserves_metadata_and_is_idempotent(jpeg, keep_original):
     original = jpeg.read_bytes()
     optimizer = PillowJpegOptimizer()
@@ -156,6 +170,37 @@ def test_apply_reduces_size_preserves_metadata_and_is_idempotent(jpeg, keep_orig
     assert again.bytes_saved == 0
     assert jpeg.read_bytes() == optimized
     assert not list(jpeg.parent.glob(".onedrive-fixer-*"))
+
+
+def test_lower_quality_candidate_kept_when_output_is_larger(tmp_path):
+    source = tmp_path / "photo_iOS.jpeg"
+    pixels = random.Random(42).randbytes(128 * 96 * 3)
+    with Image.frombytes("RGB", (128, 96), pixels) as image:
+        image.save(source, quality=80, subsampling=2, optimize=True)
+    original = source.read_bytes()
+    optimizer = PillowJpegOptimizer()
+    plans = scan_jpeg(tmp_path, optimizer)
+    assert plans[0].status == Status.READY
+    trash = RecordingTrash()
+    result = optimize_jpeg(plans, optimizer, trash, dry_run=False)[0]
+    assert result.status == Status.UNCHANGED
+    assert "not smaller" in result.message
+    assert result.bytes_saved == 0
+    assert source.read_bytes() == original
+    assert list(tmp_path.iterdir()) == [source]
+    assert not trash.originals
+
+
+def test_apply_rechecks_encoding_eligibility(jpeg, monkeypatch):
+    original = jpeg.read_bytes()
+    optimizer = PillowJpegOptimizer()
+    plans = scan_jpeg(jpeg.parent, optimizer)
+    monkeypatch.setattr(optimizer, "needs_optimization", lambda _: False)
+    result = optimize_jpeg(plans, optimizer, RecordingTrash(), dry_run=False)[0]
+    assert result.status == Status.ERROR
+    assert "already uses quality 90 with 4:2:0" in result.message
+    assert jpeg.read_bytes() == original
+    assert list(jpeg.parent.iterdir()) == [jpeg]
 
 
 def test_existing_backup_is_a_conflict(jpeg):
