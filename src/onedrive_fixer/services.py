@@ -30,7 +30,7 @@ def _files(
     folder = folder.expanduser().resolve(strict=True)
     if not folder.is_dir():
         raise NotADirectoryError(folder)
-    files = []
+    files: list[Path] = []
 
     def raise_error(error: OSError) -> None:
         """
@@ -111,7 +111,7 @@ def scan_names(
     Return per-file skips, errors, and conflicts; folder traversal errors propagate.
     """
     files = _files(folder, MEDIA_EXTENSIONS)
-    plans = []
+    plans: list[FilePlan] = []
     for index, source in enumerate(files, 1):
         try:
             stamp = FileStamp.read(source)
@@ -148,7 +148,7 @@ def scan_heic(folder: Path, progress: ProgressCallback | None = None) -> list[Fi
     Capture source stamps and report occupied or duplicate destinations as conflicts.
     """
     files = _files(folder, frozenset({".heic"}))
-    plans = []
+    plans: list[FilePlan] = []
     for index, source in enumerate(files, 1):
         try:
             destination = source.with_suffix(".jpeg")
@@ -217,7 +217,7 @@ def scan_jpeg(
     Skip quality-90 4:2:0 files; reads may hydrate cloud files.
     """
     files = _files(folder, frozenset({".jpeg"}), name_filter=lambda name: "_ios" in name.casefold())
-    plans = []
+    plans: list[FilePlan] = []
     for index, source in enumerate(files, 1):
         try:
             stamp = FileStamp.read(source)
@@ -272,7 +272,7 @@ def _apply(
     Preserve scan plans and collect failures as results so the batch can continue.
     """
     plans = list(plans)
-    results = []
+    results: list[FileResult] = []
     for index, plan in enumerate(plans, 1):
         if plan.status != Status.READY:
             result = FileResult(plan, plan.status, plan.message, dry_run)

@@ -40,6 +40,9 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --extra dev --no-editable
 
+      - name: Check strict types
+        run: uv run --locked --extra dev --no-editable pyright
+
       - name: Run tests against installed package
         run: uv run --locked --no-editable python -m pytest
 

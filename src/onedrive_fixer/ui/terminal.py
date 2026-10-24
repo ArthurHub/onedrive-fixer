@@ -3,7 +3,7 @@ Styled terminal prompts and result rendering, separate from media operations.
 """
 
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 
 import questionary
@@ -152,7 +152,7 @@ def show_results(results: list[FileResult], *, details: bool = False) -> None:
 
 
 @contextmanager
-def report_progress(*, quiet: bool = False) -> Iterator[Callable[[Progress], None] | None]:
+def report_progress(*, quiet: bool = False) -> Generator[Callable[[Progress], None] | None]:
     """
     Provide a service callback using live terminal progress or plain stderr lines.
     Quiet operations emit nothing; the display always closes on errors or cancellation.

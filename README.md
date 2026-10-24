@@ -17,8 +17,8 @@ py -3.14 -m venv .venv
 If you use [uv](https://docs.astral.sh/uv/), the committed lockfile provides reproducible dependencies:
 
 ```powershell
-uv sync --extra dev
-uv run onedrive-fixer
+.\.tools\uv\bin\uv.exe sync --locked --extra dev
+.\.tools\uv\bin\uv.exe run onedrive-fixer
 ```
 
 ## Standalone Windows executable
@@ -28,7 +28,7 @@ Build a single executable on Windows with Python 3.14 and uv:
 ```powershell
 # Use a separate environment so a running development CLI does not lock the build.
 $env:UV_PROJECT_ENVIRONMENT = "$PWD\.tools\executable-env"
-uv run --locked --group executable --no-editable python scripts/build_executable.py
+.\.tools\uv\bin\uv.exe run --locked --group executable --no-editable python scripts/build_executable.py
 ```
 
 The output is `dist\onedrive-fixer.exe`. Copy that file to another Windows x64
@@ -113,31 +113,40 @@ Exit codes: `0` success (including a clean preview or declined confirmation), `1
 
 ## Development
 
-Install local style hooks once per checkout:
+Install local development hooks once per checkout. Python and [uv](https://docs.astral.sh/uv/getting-started/installation/) must be available; on Windows, install uv with `winget install --id=astral-sh.uv -e` and restart your terminal.
 
 ```powershell
 python -m pip install pre-commit
 pre-commit install
 ```
 
-With uv, use `uv tool install pre-commit` instead of the pip command.
+With uv, use `uv tool install pre-commit` instead of the pip command. If uv is installed only under this checkout's `.tools/uv/bin/`, invoke that executable by its relative path; the type-checking hook also recognizes this local installation.
 
-Hooks apply Ruff lint fixes and formatting using `pyproject.toml`, and check whitespace,
-YAML, JSON, TOML, and file sizes. To run the same checks manually:
+Hooks apply Ruff lint fixes and formatting, run strict Pyright type checking, and check
+whitespace, YAML, JSON, TOML, and file sizes. Shared configuration lives in
+`pyproject.toml`; Pylance reads the same strict type-checking policy in VS Code.
+To run the same checks manually:
 
 ```powershell
 pre-commit run --all-files --show-diff-on-failure
 ```
 
 ```powershell
-python -m pytest
-python -m ruff check .
-python -m ruff format --check .
-python -m build
+.\.tools\uv\bin\uv.exe sync --locked --extra dev
+.\.tools\uv\bin\uv.exe run --locked --extra dev pyright
+.\.tools\uv\bin\uv.exe run --locked --extra dev python -m pytest
+.\.tools\uv\bin\uv.exe run --locked --extra dev python -m ruff check .
+.\.tools\uv\bin\uv.exe run --locked --extra dev python -m ruff format --check .
+.\.tools\uv\bin\uv.exe build
 ```
 
+Pyright checks all of `src/` when application code or its configuration changes,
+including callers in unchanged files. Tests and packaging/helper scripts are outside
+the initial strict-checking scope and remain covered by Ruff and the relevant runtime
+checks. See [type-checking guidance](docs/development.md#type-checking) for details.
+
 GitHub Actions runs `build` on Windows, Linux, and macOS with Python 3.14 and locked
-dependencies, tests the installed package, builds a wheel and source distribution,
+dependencies, enforces strict type checking, tests the installed package, builds a wheel and source distribution,
 and checks the CLI entry point. The separate `maintenance` workflow runs the same
 pre-commit hooks and commits passing fixes as `chore: maintenance` on same-repository
 branches. Fork pull requests receive checks without automatic commits. Both workflows

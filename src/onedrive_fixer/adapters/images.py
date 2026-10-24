@@ -6,7 +6,9 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageOps, JpegImagePlugin
-from pillow_heif import register_heif_opener
+
+# pillow-heif leaves its optional **kwargs untyped; we use the no-argument API.
+from pillow_heif import register_heif_opener  # pyright: ignore[reportUnknownVariableType]
 from send2trash import send2trash
 
 
@@ -82,6 +84,7 @@ class PillowJpegOptimizer:
                 reference.save(buffer, format="JPEG", quality=90, subsampling=2)
             buffer.seek(0)
             with Image.open(buffer) as reference:
+                assert isinstance(reference, JpegImagePlugin.JpegImageFile)
                 self._quality_90_tables = reference.quantization
 
     def needs_optimization(self, source: Path) -> bool:
@@ -90,7 +93,7 @@ class PillowJpegOptimizer:
         Inspect headers without decoding pixels.
         """
         with Image.open(source) as image:
-            if image.format != "JPEG":
+            if image.format != "JPEG" or not isinstance(image, JpegImagePlugin.JpegImageFile):
                 raise ValueError("Source is not a JPEG image.")
             return not (
                 image.quantization == self._quality_90_tables

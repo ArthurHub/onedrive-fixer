@@ -10,6 +10,15 @@ repos:
       - id: ruff-format
         types_or: [python, pyi]
 
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright (strict)
+        entry: python scripts/check_types.py
+        language: system
+        pass_filenames: false
+        files: ^(src/.*\.(py|pyi)|scripts/check_types\.py|pyproject\.toml|uv\.lock)$
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

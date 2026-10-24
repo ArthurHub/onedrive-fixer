@@ -7,7 +7,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import ExifTags, Image
-from pillow_heif import register_heif_opener
+
+# pillow-heif leaves its optional **kwargs untyped; we use the no-argument API.
+from pillow_heif import register_heif_opener  # pyright: ignore[reportUnknownVariableType]
 
 from onedrive_fixer.models import MediaMetadata
 

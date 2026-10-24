@@ -2,35 +2,68 @@
 
 ## Environment
 
-Use Python 3.14. The `.python-version` file also selects 3.14 for uv. Run `uv sync --extra dev` with the committed lockfile, or create a virtual environment and run `python -m pip install -e '.[dev]'`. Runtime dependencies are PyAV, Pillow, pillow-heif, and Send2Trash; development dependencies are pytest, Ruff, and build.
+Use Python 3.14. The `.python-version` file also selects 3.14 for uv. Run `uv sync --locked --extra dev` with the committed lockfile. The development extra includes pytest, Ruff, build, and Pyright with its packaged Node.js runtime. The runtime used by Pyright is installed through the lockfile, so a separate Node.js installation or first-run runtime download is unnecessary. Runtime application dependencies also include Questionary and Rich for terminal interaction.
+
+Install uv separately using its [installation instructions](https://docs.astral.sh/uv/getting-started/installation/). On Windows, `winget install --id=astral-sh.uv -e` installs it; restart the terminal afterward. If uv is already installed under this checkout's `.tools/uv/bin/`, use that executable's relative path in place of `uv`. Plain `pip install -e '.[dev]'` remains supported, but installs from the version ranges in `pyproject.toml` rather than the uv lockfile.
 
 Metadata is read in process through Pillow and PyAV. Standard wheels supply the native libraries, so no ExifTool or FFmpeg executable installation is required. The optional `.tools/` directory is ignored and may hold workspace-local development tools. The application does not depend on that directory or the legacy TypeScript checkout.
 
 ## Checks
 
 ```powershell
-python -m pytest
-python -m ruff check .
-python -m ruff format --check .
-python -m build
-onedrive-fixer --help
+uv run --locked --extra dev pyright
+uv run --locked --extra dev python -m pytest
+uv run --locked --extra dev python -m ruff check .
+uv run --locked --extra dev python -m ruff format --check .
+uv build
+uv run --locked onedrive-fixer --help
 ```
 
 Install `pre-commit` with `python -m pip install pre-commit`, then run `pre-commit install`
 once per checkout. Normal Git commits, including commits from VS Code, then run the
 hooks in `.pre-commit-config.yaml`. After editing code, run
 `pre-commit run --files <changed files>` to apply Ruff lint fixes and formatting and
-check file hygiene. Use `pre-commit run --all-files --show-diff-on-failure` for a full
+check strict types and file hygiene. Use `pre-commit run --all-files --show-diff-on-failure` for a full
 check. Ruff hooks use the existing `pyproject.toml` rules; keep their pinned revision
 aligned with the Ruff version in `uv.lock` when upgrading tools.
 
 GitHub Actions uses one `maintenance` workflow to apply and verify these hooks before
 committing passing fixes on writable same-repository branches. Fork pull requests only
 run checks. The separate `build` workflow installs locked dependencies with
-`uv sync --locked --extra dev --no-editable`, runs pytest against the installed package,
+`uv sync --locked --extra dev --no-editable`, runs strict Pyright checks and pytest against the installed package,
 builds both distribution formats with `uv build`, and checks `onedrive-fixer --help` on
 Windows, Linux, and macOS with Python 3.14. Optional legacy-media tests remain skipped
 unless their fixture environment variable is set.
+
+### Type checking
+
+`[tool.pyright]` in `pyproject.toml` defines strict checking for Python 3.14 and includes
+the application under `src/`. Pyright's CLI and VS Code's Pylance use this shared
+policy; a personal `python.analysis.typeCheckingMode` setting is only a default for
+projects without their own policy. Select the project's `.venv` interpreter in the
+editor so dependency resolution matches the command line. Keep machine-specific
+interpreter paths out of committed configuration.
+
+Tests and packaging/helper scripts are outside the initial strict-checking scope.
+Ruff still checks them, pytest exercises the application, and the executable checks
+exercise the packaged build. Expand the type-checking scope when those files have
+the required annotations and tool dependencies.
+
+The local `pyright` pre-commit hook uses `scripts/check_types.py` to find uv on PATH or
+under `.tools/uv/bin/`, then runs `uv run --locked --extra dev pyright`. Its
+`pass_filenames: false` setting checks the whole configured source tree rather than
+only staged files. Source changes, `pyproject.toml`, `uv.lock`, and the runner script
+trigger it. Each developer must install the Git hook once; CI runs the checker
+explicitly even if a developer bypasses local hooks.
+
+Use the locked Pyright dependency instead of installing another checker globally.
+Resolve errors with precise annotations and runtime narrowing. Prefer available
+library stubs to broad suppressions; the HEIF opener imports have narrow, explained
+exceptions for its untyped optional keyword arguments. Unnecessary type-ignore
+comments are errors so outdated exceptions are caught after dependency upgrades.
+Ruff handles code patterns and formatting, Pyright checks static types, and pytest
+checks behavior. Type annotations do not validate external input at runtime; retain
+the existing checks for file state, metadata, JSON, and command arguments.
 
 ### Executable checks
 

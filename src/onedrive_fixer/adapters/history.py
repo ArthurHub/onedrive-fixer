@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import cast
 
 
 class RecentFolders:
@@ -39,7 +40,8 @@ class RecentFolders:
             paths = value.get("lastUsedPaths", [])
             if not isinstance(paths, list):
                 return []
-            return list(dict.fromkeys(item for item in paths if isinstance(item, str)))[:5]
+            entries = cast(list[object], paths)
+            return list(dict.fromkeys(item for item in entries if isinstance(item, str)))[:5]
         except OSError, ValueError, AttributeError:
             return []
 
